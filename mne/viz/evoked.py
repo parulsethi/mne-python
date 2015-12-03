@@ -131,15 +131,17 @@ def _rgb(x, y, z):
 def _plot_legend(pos, colors, axis, bads, outlines='skirt'):
     """Helper function to plot color/channel legends for butterfly plots
     with spatial colors"""
-    from mpl_toolkits.axes_grid.inset_locator import inset_axes
-    ax = inset_axes(axis, width=0.5, height=0.5, loc=3)
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    divider = make_axes_locatable(axis)
+    ax = divider.append_axes("right", size="25%", pad=0.05)
 
     pos, outlines = _check_outlines(pos, outlines, None)
     pos_x, pos_y = _prepare_topomap(pos, ax)
-    ax.scatter(pos_x, pos_y, color=colors, s=20, marker='.', zorder=0)
+    ax.scatter(pos_x, pos_y, color=colors, s=30, marker='.', zorder=0)
     for idx in bads:
-        ax.scatter(pos_x[idx], pos_y[idx], s=2, marker='.', color='w',
-                   zorder=1)
+        ax.plot(pos_x[idx], pos_y[idx], markersize=4, marker='o',
+                markerfacecolor='w', markeredgecolor=colors[idx],
+                markeredgewidth=1, zorder=1)
 
     if isinstance(outlines, dict):
         outlines_ = dict([(k, v) for k, v in outlines.items() if k not in
