@@ -28,6 +28,7 @@ warnings.simplefilter('always')
 
 
 def make_epochs():
+    """Get epochs."""
     raw = io.Raw(raw_fname, preload=False)
     events = read_events(event_name)
     picks = pick_types(raw.info, meg='mag', stim=False, ecg=False,
@@ -45,22 +46,30 @@ def make_epochs():
 @slow_test
 @requires_sklearn_0_15
 def test_generalization_across_time():
-    """Test time generalization decoding
-    """
+    """Test time generalization decoding."""
     from sklearn.svm import SVC
     # KernelRidge is used for testing 1) regression analyses 2) n-dimensional
     # predictions.
     from sklearn.kernel_ridge import KernelRidge
     from sklearn.preprocessing import LabelEncoder
-    from sklearn.metrics import mean_squared_error, roc_auc_score
+    from sklearn.metrics import roc_auc_score
+
+    epochs = make_epochs()
+    y_4classes = np.hstack((epochs.events[:7, 2], epochs.events[7:, 2] + 1))
     if check_version('sklearn', '0.18'):
         from sklearn.model_selection import (KFold, StratifiedKFold,
                                              ShuffleSplit, LeaveOneLabelOut)
+        cv_shuffle = ShuffleSplit()
+        cv = LeaveOneLabelOut()
+        # XXX we cannot pass any other parameters than X and y to cv.split
+        # so we have to build it before hand
+        cv_lolo = [(train, test) for train, test in cv.split(
+                   X=y_4classes, y=y_4classes, labels=y_4classes)]
     else:
         from sklearn.cross_validation import (KFold, StratifiedKFold,
                                               ShuffleSplit, LeaveOneLabelOut)
-
-    epochs = make_epochs()
+        cv_shuffle = ShuffleSplit(len(epochs))
+        cv_lolo = LeaveOneLabelOut(y_4classes)
 
     # Test default running
     gat = GeneralizationAcrossTime(picks='foo')
@@ -175,17 +184,8 @@ def test_generalization_across_time():
     assert_equal(len(gat.scores_[0]), 15)  # testing time
 
     # Test start stop training & test cv without n_fold params
-    y_4classes = np.hstack((epochs.events[:7, 2], epochs.events[7:, 2] + 1))
     train_times = dict(start=0.090, stop=0.250)
-    if check_version('sklearn', '0.18'):
-        cv = LeaveOneLabelOut()
-        # XXX we cannot pass any other parameters than X and y to cv.split
-        # so we have to build it before hand
-        cv = [(train, test) for train, test in cv.split(
-            X=y_4classes, y=y_4classes, labels=y_4classes)]
-    else:
-        cv = LeaveOneLabelOut(y_4classes)
-    gat = GeneralizationAcrossTime(cv=cv, train_times=train_times)
+    gat = GeneralizationAcrossTime(cv=cv_lolo, train_times=train_times)
     # predict without fit
     assert_raises(RuntimeError, gat.predict, epochs)
     with warnings.catch_warnings(record=True):
@@ -292,11 +292,7 @@ def test_generalization_across_time():
 
     # Test that gets error if train on one dataset, test on another, and don't
     # specify appropriate cv:
-    if check_version('sklearn', '0.18'):
-        cv = ShuffleSplit()
-    else:  # XXX sklearn < 0.18
-        cv = ShuffleSplit(len(epochs))
-    gat = GeneralizationAcrossTime(cv=cv)
+    gat = GeneralizationAcrossTime(cv=cv_shuffle)
     gat.fit(epochs)
     with warnings.catch_warnings(record=True):
         gat.fit(epochs)
@@ -363,8 +359,7 @@ def test_generalization_across_time():
 
 @requires_sklearn
 def test_decoding_time():
-    """Test TimeDecoding
-    """
+    """Test TimeDecoding."""
     from sklearn.svm import SVR
     from sklearn.cross_validation import KFold
     epochs = make_epochs()

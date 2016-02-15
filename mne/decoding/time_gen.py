@@ -96,6 +96,31 @@ class _GeneralizationAcrossTime(object):
         self.predict_method = predict_method
         self.n_jobs = n_jobs
 
+    def _set_cv(self, X, y, is_classifier):
+        """Prepare cross-validation."""
+        if not isinstance(self.cv, (int, np.int)):
+            return
+        cv = self.cv
+        if check_version('sklearn', '0.18'):
+            from sklearn.model_selection import (check_cv, StratifiedKFold,
+                                                 KFold)
+            # Automatically chose StratifiedKFold if classification else KFold
+            XFold = StratifiedKFold if is_classifier else KFold
+            cv = XFold(n_folds=cv)
+            cv = check_cv(cv=cv, y=y, classifier=is_classifier)
+            self._cv_splits = [(train, test) for train, test in
+                               cv.split(X=np.zeros_like(y), y=y)]
+        else:
+            from sklearn.cross_validation import (check_cv, StratifiedKFold,
+                                                  KFold)
+            if is_classifier:
+                cv = StratifiedKFold(y=y, n_folds=cv)
+            else:
+                cv = KFold(n=len(y), n_folds=cv)
+            # XXX sklearn API change from 0.18: see sklearn issue #6300
+            self.cv_ = check_cv(cv=cv, X=X, y=y, classifier=is_classifier)
+            self._cv_splits = [(train, test) for train, test in cv]
+
     def fit(self, epochs, y=None):
         """Train a classifier on each specified time slice.
 
@@ -123,12 +148,6 @@ class _GeneralizationAcrossTime(object):
         matrices as input.
         """
         from sklearn.base import clone, is_classifier
-        if check_version('sklearn', '0.18'):
-            from sklearn.model_selection import (check_cv, StratifiedKFold,
-                                                 KFold)
-        else:
-            from sklearn.cross_validation import (check_cv, StratifiedKFold,
-                                                  KFold)
 
         # Clean attributes
         for att in ['picks_', 'ch_names', 'y_train_', 'cv_', 'train_times_',
@@ -142,32 +161,7 @@ class _GeneralizationAcrossTime(object):
         X, y, self.picks_ = _check_epochs_input(epochs, y, self.picks)
         self.ch_names = [epochs.ch_names[p] for p in self.picks_]
 
-        # Prepare cross-validation
-        cv = self.cv
-        if isinstance(cv, (int, np.int)):
-            # Automatically chose StratifiedKFold if classification else KFold
-            if check_version('sklearn', '0.18'):
-                XFold = StratifiedKFold if is_classifier(self.clf) else KFold
-                cv = XFold(n_folds=cv)
-            else:
-                if is_classifier(self.clf):
-                    cv = StratifiedKFold(y=y, n_folds=cv)
-                else:
-                    cv = KFold(n=len(y), n_folds=cv)
-        if check_version('sklearn', '0.18'):
-            cv = check_cv(cv=cv, y=y, classifier=is_classifier(self.clf))
-        else:
-            # XXX sklearn API change from 0.18: see sklearn issue #6300
-            cv = check_cv(cv=cv, X=X, y=y, classifier=is_classifier(self.clf))
-        self.cv_ = cv
-
-        # Keep cv splits to retrieve them at predict()
-        if hasattr(cv, 'split'):
-            self._cv_splits = [(train, test) for train, test in
-                               cv.split(X=np.zeros_like(y), y=y)]
-        else:
-            # XXX support sklearn < 0.18
-            self._cv_splits = [(train, test) for train, test in cv]
+        self._set_cv(X, y, is_classifier(self.clf))
 
         if not np.all([len(train) for train, _ in self._cv_splits]):
             raise ValueError('Some folds do not have any train epochs.')
