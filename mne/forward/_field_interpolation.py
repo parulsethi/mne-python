@@ -60,10 +60,8 @@ def _compute_mapping_matrix(fmd, info):
     """Do the hairy computations"""
     logger.info('    Preparing the mapping matrix...')
     # assemble a projector and apply it to the data
-    ch_names = fmd['ch_names']
     projs = info.get('projs', list())
-    proj_op = make_projector(projs, ch_names)[0]
-    proj_dots = np.dot(proj_op.T, np.dot(fmd['self_dots'], proj_op))
+    proj_dots = fmd['self_dots']
 
     noise_cov = fmd['noise']
     # Whiten
@@ -92,7 +90,7 @@ def _compute_mapping_matrix(fmd, info):
 
     # Take into account that the lead fields used to compute
     # d->surface_dots were unprojected
-    inv_whitened_proj = (np.dot(inv_whitened.T, proj_op)).T
+    inv_whitened_proj = inv_whitened
 
     # Finally sandwich in the selection matrix
     # This one picks up the correct lead field projection
